@@ -47,34 +47,43 @@ claims := payload if {
 token_valido if claims
 
 # ---------------------------------------------------------------
-# 5. Regras de autorização
+# 5. Roles: qual role cada rota exige	
+#    Use o campo "Value" da App Role cadastrada no Entra ID
+#    (diferencia maiúsculas/minúsculas)
+# ---------------------------------------------------------------
+permissoes := {
+	"GET /produtos": "Produtos.Leitura",
+	"POST /produtos": "Produtos.Escrever",
+}
+
+rota := sprintf("%s %s", [input.method, input.path])
+
+role_exigida := permissoes[rota]
+
+# Claim "roles" do token Microsoft (lista vazia se o token não tiver roles)
+roles := object.get(claims, "roles", [])
+
+# ---------------------------------------------------------------
+# 6. Regra de autorização
 # ---------------------------------------------------------------
 default allow := false
 
-# Qualquer usuário autenticado pode LER produtos
 allow if {
 	token_valido
-	input.method == "GET"
-	input.path == "/produtos"
-}
-
-# Apenas quem tem a role "Produtos.Escrever" pode CRIAR produtos
-allow if {
-	token_valido
-	input.method == "POST"
-	input.path == "/produtos"
-	"Produtos.Escrever" in claims.roles
+	role_exigida in roles
 }
 
 # ---------------------------------------------------------------
-# 6. Motivo da negação (ajuda a debugar e a explicar no treinamento)
+# 7. Motivo da negação (ajuda a debugar e a explicar no treinamento)
 # ---------------------------------------------------------------
 motivo := "token ausente ou sem prefixo Bearer" if not token
 
 else := "token inválido (assinatura, expiração, audience ou emissor)" if not token_valido
 
-else := "usuário sem permissão para esta operação" if not allow
+else := sprintf("rota não mapeada: %s", [rota]) if not role_exigida
+
+else := sprintf("role '%s' ausente no token. Roles recebidas: %v", [role_exigida, roles]) if not allow
 
 else := "permitido"
 
-usuario := claims.preferred_username if token_valido
+usuario := object.get(claims, "preferred_username", object.get(claims, "appid", "desconhecido")) if token_valido

@@ -32,8 +32,20 @@ requisicao(method, token) := {
 	"authorization": concat(" ", ["Bearer", token]),
 }
 
-test_get_com_token_valido_permite if {
-	authz.allow with input as requisicao("GET", gerar_token({}))
+test_get_com_role_leitura_permite if {
+	authz.allow with input as requisicao("GET", gerar_token({"roles": ["leitura"]}))
+		with authz.config as config_teste
+		with authz.jwks as jwks_teste
+}
+
+test_get_sem_role_nega if {
+	not authz.allow with input as requisicao("GET", gerar_token({}))
+		with authz.config as config_teste
+		with authz.jwks as jwks_teste
+}
+
+test_token_sem_claim_roles_nega if {
+	not authz.allow with input as requisicao("GET", gerar_token({"roles": null}))
 		with authz.config as config_teste
 		with authz.jwks as jwks_teste
 }
@@ -45,38 +57,44 @@ test_sem_token_nega if {
 }
 
 test_token_expirado_nega if {
-	not authz.allow with input as requisicao("GET", gerar_token({"exp": 1000}))
+	not authz.allow with input as requisicao("GET", gerar_token({"exp": 1000, "roles": ["leitura"]}))
 		with authz.config as config_teste
 		with authz.jwks as jwks_teste
 }
 
 test_audience_errada_nega if {
-	not authz.allow with input as requisicao("GET", gerar_token({"aud": "api://outra-api"}))
+	not authz.allow with input as requisicao("GET", gerar_token({"aud": "api://outra-api", "roles": ["leitura"]}))
 		with authz.config as config_teste
 		with authz.jwks as jwks_teste
 }
 
 test_emissor_de_outro_tenant_nega if {
 	iss := "https://login.microsoftonline.com/tenant-hacker/v2.0"
-	not authz.allow with input as requisicao("GET", gerar_token({"iss": iss}))
+	not authz.allow with input as requisicao("GET", gerar_token({"iss": iss, "roles": ["leitura"]}))
 		with authz.config as config_teste
 		with authz.jwks as jwks_teste
 }
 
-test_post_sem_role_nega if {
-	not authz.allow with input as requisicao("POST", gerar_token({}))
+test_post_so_com_leitura_nega if {
+	not authz.allow with input as requisicao("POST", gerar_token({"roles": ["leitura"]}))
 		with authz.config as config_teste
 		with authz.jwks as jwks_teste
 }
 
-test_post_com_role_permite if {
-	authz.allow with input as requisicao("POST", gerar_token({"roles": ["Produtos.Escrever"]}))
+test_post_com_role_escrita_permite if {
+	authz.allow with input as requisicao("POST", gerar_token({"roles": ["leitura", "escrita"]}))
 		with authz.config as config_teste
 		with authz.jwks as jwks_teste
 }
 
-test_motivo_sem_permissao if {
-	authz.motivo == "usuário sem permissão para esta operação" with input as requisicao("POST", gerar_token({}))
+test_rota_nao_mapeada_nega if {
+	not authz.allow with input as {"method": "DELETE", "path": "/produtos", "authorization": concat(" ", ["Bearer", gerar_token({"roles": ["leitura", "escrita"]})])}
+		with authz.config as config_teste
+		with authz.jwks as jwks_teste
+}
+
+test_motivo_mostra_role_ausente if {
+	authz.motivo == `role 'escrita' ausente no token. Roles recebidas: ["leitura"]` with input as requisicao("POST", gerar_token({"roles": ["leitura"]}))
 		with authz.config as config_teste
 		with authz.jwks as jwks_teste
 }
